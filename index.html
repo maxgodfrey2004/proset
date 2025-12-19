@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>ProSet Timer</title>
+
+  <style>
+    * {
+      font-family: 'Courier New', Courier, monospace;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      margin: 0;
+      padding: 1rem;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .overlay-content {
+      background: white;
+      padding: 5%;
+      border-radius: 12px;
+      width: 95%;
+      max-width: 400px;
+      text-align: center;
+
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .overlay-content input {
+      padding: 0.5rem;
+      font-size: 1rem;
+      text-align: center;
+
+      background-color: #eee;
+      border: 4px solid #ddd;
+      border-radius: 10px;
+    }
+
+    .overlay-content button {
+      width: 100%;
+      padding: 2.5%;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    .button-green {
+      color: white;
+      background-color: forestgreen;
+      border: 4px solid lightgreen;
+      border-radius: 3px;
+    }
+
+    .button-blue {
+      color: white;
+      background-color: blue;
+      border: 4px solid lightblue;
+      border-radius: 3px;
+    }
+
+    .game-wrap {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 500px;
+    }
+
+    .game-status-grid {
+      display: grid;
+      grid-template-columns: minmax(50%, 100px), 1fr;
+      grid-template-rows: auto auto;
+      row-gap: 1%;
+      align-items: center;
+    }
+
+    .game-status-grid div {
+      font-size: 14px;
+    }
+
+    #verify {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      align-self: center;
+      min-height: 3rem;
+      width: 100%;
+      height: 100%;
+    }
+
+    .board {
+      display: grid;
+      grid-template-rows: auto auto auto;
+      background: lightgreen;
+      row-gap: 0%;
+      width: 100%;
+      max-width: 500px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: center;
+      gap: 1%;
+    }
+
+    .row.middle {
+      gap: 1%;
+    }
+
+    .card {
+      aspect-ratio: 3 / 4;
+      width: 28%;
+      max-width: 140px;
+      background: #f5f5f5;
+      border-radius: 13%;
+      border: 3px solid #bbb;
+      margin-top: 1%;
+      margin-bottom: 1%;
+
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      padding: 1%;
+      max-height: 200px;
+    }
+
+    .card.hidden {
+      visibility: hidden;
+    }
+
+    .card.selected {
+      border-color: blue;
+    }
+
+    .dot {
+      width: 70%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      border: 1px solid black;
+      margin: auto;
+    }
+
+    .dot.hidden {
+      visibility: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay" id="overlay-start">
+    <div class="overlay-content">
+      <h1>ProSet</h1>
+      <button class="button-blue" onclick="playDaily()">Play Daily</button>
+      <p>or</p>
+      <input type="text" id="seedInput" placeholder="Enter a random seed" spellcheck="false" />
+      <button class="button-green" onclick="startGameWithSeedInput()">Start</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay-end" style="display: none;">
+    <div class="overlay-content">
+      <h2>Congratulations!</h2>
+      <p id="overlay-end-message">Text goes here...</p>
+      <button class="button-green" onclick="copyMessage()">Copy to Clipboard</button>
+      <button class="button-green" onclick="playAgain()">Play Again</button>
+    </div>
+  </div>
+
+  <div class="game-wrap" id="game" style="display: none;">
+    <div class="board" id="board"></div>
+    <div class="game-status-grid">
+      <div id="timer">Time: 00:00.000</div>
+      <button class="button-green" id="verify" onclick="verify()">SET!</button>
+      <div id="seed">Seed: XXX</div>
+    </div>
+  </div>
+
+  <script>
+    // Basic browser-agnostic rng
+    function mulberry32(seed) {
+      return function () {
+        let t = seed += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // Basic browser-agnostic hashing
+    function basicHash(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; ++i) {
+        hash = (hash * 137 + str.charCodeAt(i)) >>> 0;
+      }
+      return hash;
+    }
+
+    // Seed string for the "Play Daily" option
+    function dailyGameSeed() {
+      return new Date().toLocaleDateString("en-CA");
+    }
+
+    const selected = [];
+    const masks = [];
+    const layout = [2, 3, 2];  // Future customization potential here.
+    const cardElements = [];
+
+    let deck;
+    let stopwatch;
+    let seedString;
+
+    const dotColors = [
+      "#ff0000", "#ff7f00", "#ffff00", "#00cc00", "#0099ff", "#9900ff"
+    ];
+
+    function cleanup() {
+      board.innerHTML = '';
+      cardElements.length = 0;
+      masks.length = 0;
+      selected.length = 0;
+    }
+
+    function setupGrid() {
+      let cardIndex = 0;
+      layout.forEach((count, rowIdx) => {
+        const row = document.createElement("div");
+        row.className = "row";
+        for (let i = 0; i < count; ++i) {
+          const card = document.createElement("div");
+          card.className = "card";
+          const idx = cardIndex++;
+          card.classList.add
+          // Selection logic
+          card.onclick = () => {
+            card.classList.toggle("selected");
+            const pos = selected.indexOf(idx);
+            if (pos === -1) {
+              selected.push(idx);
+            } else {
+              selected.splice(pos, 1);
+            }
+          };
+          // Add dots
+          for (let dotIdx = 0; dotIdx < dotColors.length; ++dotIdx) {
+            const dot = document.createElement("div");
+            dot.className = "dot";
+            dot.style.background = dotColors[dotIdx];
+            card.appendChild(dot);
+          }
+          row.appendChild(card);
+          cardElements.push(card);
+          mask = deck.deal();
+          masks.push(mask);
+          updateCard(card, mask);
+        }
+        board.appendChild(row);
+      });
+    }
+
+    const Deck = class {
+      #cards;
+      #cards_idx = 0;
+
+      constructor(seed) {
+        let prng = mulberry32(seed);
+        this.#cards = Array.from({ length: 63 }, (_, i) => i + 1);
+        for (let i = this.#cards.length - 1; i > 0; --i) {
+          const j = Math.floor(prng() * (i + 1));
+          [this.#cards[i], this.#cards[j]] = [this.#cards[j], this.#cards[i]];
+        }
+      }
+
+      deal() {
+        if (this.#cards_idx >= this.#cards.length) {
+          return undefined;
+        }
+        return this.#cards[this.#cards_idx++];
+      }
+
+      get nRemaining() {
+        return this.#cards.length - this.#cards_idx;
+      }
+    };
+
+    function updateCard(cardElem, mask) {
+      const isHidden = mask == null;
+      cardElem.classList.toggle("hidden", isHidden);
+      if (isHidden) {
+        return;
+      }
+      const dots = cardElem.querySelectorAll(".dot");
+      dots.forEach((dot, i) => {
+        dot.classList.toggle("hidden", !((mask >>> i) & 1));
+      });
+    }
+
+    function verify() {
+      let total = 0;
+      selected.forEach(idx => {
+        total ^= masks[idx];
+      });
+      if (total !== 0) {
+        alert("Not a proset...");
+        return;
+      }
+      selected.sort();
+      selected.forEach(idx => {
+        masks[idx] = deck.deal();
+        cardElements[idx].classList.toggle("selected");
+        updateCard(cardElements[idx], masks[idx]);
+      });
+      selected.length = 0;
+      if (deck.nRemaining === 0) {
+        endGame();
+      }
+    }
+
+    class Stopwatch {
+      swElem;
+      #running;
+      #startTime;
+      #endTime;
+      #rafId;
+
+      constructor(stopwatchElem) {
+        this.swElem = stopwatchElem;
+        this.#running = false;
+        this.updateStopwatchElem = this.updateStopwatchElem.bind(this);
+      }
+
+      updateStopwatchElem(timestamp) {
+        if (!this.#startTime) {
+          this.#startTime = timestamp;
+        }
+        const elapsed = ((timestamp - this.#startTime) / 1000).toFixed(2);
+        this.swElem.innerHTML = `Time: ${elapsed}`;
+        if (this.#running) {
+          this.#rafId = requestAnimationFrame(this.updateStopwatchElem);
+        }
+      }
+
+      startStopwatch() {
+        if (this.#running) {
+          return;
+        }
+        this.#running = true;
+        this.#startTime = null; // performance.now(); // null;
+        this.#rafId = requestAnimationFrame(this.updateStopwatchElem);
+      }
+
+      stopStopwatch() {
+        if (!this.#running) {
+          return;
+        }
+        this.#running = false;
+        this.#endTime = performance.now();
+        cancelAnimationFrame(this.#rafId);
+      }
+
+      get elapsed() {
+        const endOrCurTime = this.#running ? performance.now() : this.#endTime;
+        return ((endOrCurTime - this.#startTime) / 1000).toFixed(3);
+      }
+    }
+
+    function playDaily() {
+      startGame(dailyGameSeed());
+    }
+
+    function startGameWithSeedInput() {
+      startGame(document.getElementById("seedInput").value);
+    }
+    
+    function startGame(seedValue) {
+      seedString = seedValue;
+      seed = basicHash(seedValue);
+
+      document.getElementById("overlay-start").style.display = "none";
+      document.getElementById("game").style.display = "flex";
+      deck = new Deck(seed);
+      document.getElementById("seed").textContent = `Seed: ${seedValue}`;
+      setupGrid();
+
+      sw = new Stopwatch(document.getElementById("timer"));
+      sw.startStopwatch();
+    }
+
+    function endGame() {
+      sw.stopStopwatch();
+
+      document.getElementById("overlay-end-message").innerHTML = `Seed: ${seedString}<br />Time: ${sw.elapsed}`
+      document.getElementById("overlay-end").style.display = "flex";
+    }
+
+    function copyMessage() {
+      text = `I finished the daily proset game in ${sw.elapsed} seconds. Play at [url_here]`;
+      if (seedString != dailyGameSeed()) {
+        text = `I finished a proset game with seed "${seedString}" in ${sw.elapsed} seconds. Play at [url_here]`;
+      }
+      navigator.clipboard.writeText(text);
+    }
+
+    function playAgain() {
+      document.getElementById("overlay-end").style.display = "none";
+      document.getElementById("game").style.display = "none";
+      cleanup();
+      document.getElementById("overlay-start").style.display = "flex";
+    }
+  </script>
+</body>
+</html>
