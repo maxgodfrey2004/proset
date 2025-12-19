@@ -189,7 +189,7 @@
   <script>
     // Basic browser-agnostic rng
     function mulberry32(seed) {
-      return function () {
+      return function() {
         let t = seed += 0x6D2B79F5;
         t = Math.imul(t ^ (t >>> 15), t | 1);
         t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
@@ -268,7 +268,7 @@
       });
     }
 
-    const Deck = class {
+    class Deck {
       #cards;
       #cards_idx = 0;
 
@@ -311,7 +311,7 @@
         total ^= masks[idx];
       });
       if (total !== 0) {
-        alert("Not a proset...");
+        // Not a proset - potential to penalize the user here.
         return;
       }
       selected.sort();
@@ -404,11 +404,11 @@
     }
 
     function copyMessage() {
-      text = `I finished the daily proset game in ${sw.elapsed} seconds. Play at [url_here]`;
+      text = `I finished the daily proset game in ${sw.elapsed} seconds.`;
       if (seedString != dailyGameSeed()) {
-        text = `I finished a proset game with seed "${seedString}" in ${sw.elapsed} seconds. Play at [url_here]`;
+        text = `I finished a proset game with seed "${seedString}" in ${sw.elapsed} seconds.`;
       }
-      navigator.clipboard.writeText(text);
+      navigator.clipboard.writeText(text + " Play at https://maxgodfrey2004.github.io/proset/.");
     }
 
     function playAgain() {
