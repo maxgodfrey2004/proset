@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>ProSet Timer</title>
+  <title>ProSet</title>
 
   <style>
     * {
@@ -82,7 +82,7 @@
     .game-status-grid {
       display: grid;
       grid-template-columns: minmax(50%, 100px), 1fr;
-      grid-template-rows: auto auto;
+      grid-template-rows: auto auto auto;
       row-gap: 1%;
       align-items: center;
     }
@@ -93,7 +93,7 @@
 
     #verify {
       grid-column: 2;
-      grid-row: 1 / span 2;
+      grid-row: 1 / span 3;
       align-self: center;
       min-height: 3rem;
       width: 100%;
@@ -140,6 +140,10 @@
       visibility: hidden;
     }
 
+    .card.minified {
+      border: 2px solid #bbb;
+    }
+
     .card.selected {
       border-color: blue;
     }
@@ -154,6 +158,30 @@
 
     .dot.hidden {
       visibility: hidden;
+    }
+
+    .dot.minified {
+      width: 60%;
+    }
+
+    .scroll-box {
+      width: 100%;
+      max-height: 300px;
+      /* overflow-y: auto; */
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .scroll-box-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 1%;
+      max-height: 300px;
+      width: 100%;
+      border-top: 1px solid black;
+      border-bottom: 1px solid black;
     }
   </style>
 </head>
@@ -181,9 +209,12 @@
     <div class="board" id="board"></div>
     <div class="game-status-grid">
       <div id="timer">Time: 00:00.000</div>
+      <div id="cards-remaining">Cards remaining: XXX</div>
       <button class="button-green" id="verify" onclick="verify()">SET!</button>
       <div id="seed">Seed: XXX</div>
     </div>
+    <h2>Past Sets</h2>
+    <div class="scroll-box" id="set-history"></div>
   </div>
 
   <script>
@@ -226,6 +257,7 @@
 
     function cleanup() {
       board.innerHTML = '';
+      document.getElementById("set-history").innerHTML = '';
       cardElements.length = 0;
       masks.length = 0;
       selected.length = 0;
@@ -240,7 +272,6 @@
           const card = document.createElement("div");
           card.className = "card";
           const idx = cardIndex++;
-          card.classList.add
           // Selection logic
           card.onclick = () => {
             card.classList.toggle("selected");
@@ -266,6 +297,7 @@
         }
         board.appendChild(row);
       });
+      updateCardsRemaining();
     }
 
     class Deck {
@@ -293,6 +325,10 @@
       }
     };
 
+    function updateCardsRemaining() {
+      document.getElementById("cards-remaining").innerHTML = `Cards remaining: ${deck.nRemaining}`;
+    }
+
     function updateCard(cardElem, mask) {
       const isHidden = mask == null;
       cardElem.classList.toggle("hidden", isHidden);
@@ -305,6 +341,28 @@
       });
     }
 
+    function addSetToHistory(cardElements) {
+      const row = document.createElement("div");
+      row.className = "scroll-box-row";
+
+      cardElements.forEach(cardElem => {
+        cardElem.classList.add("minified");
+        cardElem.querySelectorAll(".dot").forEach((dot, i) => {
+          dot.classList.add("minified");
+        })
+        row.appendChild(cardElem);
+      });
+      // Pad with hidden cards up to seven cards
+      while (row.childElementCount < 7) {
+        const cardElem = document.createElement("div");
+        cardElem.className = "card";
+        cardElem.classList.add("hidden");
+        row.appendChild(cardElem);
+      }
+
+      document.getElementById("set-history").prepend(row);
+    }
+
     function verify() {
       let total = 0;
       selected.forEach(idx => {
@@ -314,13 +372,20 @@
         // Not a proset - potential to penalize the user here.
         return;
       }
+      // Deal new cards and record the current set
       selected.sort();
+      let cardElemsToAddToHistory = [];
       selected.forEach(idx => {
         masks[idx] = deck.deal();
         cardElements[idx].classList.toggle("selected");
+        cardElemsToAddToHistory.push(cardElements[idx].cloneNode(true));
         updateCard(cardElements[idx], masks[idx]);
       });
+      addSetToHistory(cardElemsToAddToHistory);
       selected.length = 0;
+      // Update the cards remaining counter
+      updateCardsRemaining();
+      // End the game if necessary
       if (deck.nRemaining === 0) {
         endGame();
       }
@@ -404,11 +469,11 @@
     }
 
     function copyMessage() {
-      text = `I finished the daily proset game in ${sw.elapsed} seconds.`;
+      text = `I finished the daily proset game in ${sw.elapsed} seconds!`;
       if (seedString != dailyGameSeed()) {
-        text = `I finished a proset game with seed "${seedString}" in ${sw.elapsed} seconds.`;
+        text = `I finished a proset game with seed "${seedString}" in ${sw.elapsed} seconds!`;
       }
-      navigator.clipboard.writeText(text + " Play at https://maxgodfrey2004.github.io/proset/.");
+      navigator.clipboard.writeText(text + " Play at https://maxgodfrey2004.github.io/proset/");
     }
 
     function playAgain() {
